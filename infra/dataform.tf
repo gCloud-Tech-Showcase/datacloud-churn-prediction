@@ -154,6 +154,12 @@ resource "google_dataform_repository_workflow_config" "main" {
 
   name = "full-workflow"
 
+  # Execute hourly, 15 min after the release config compiles main (a release
+  # config only produces compilation results — this is what actually runs the
+  # DAG). Dial back or remove to stop the pipeline self-refreshing.
+  cron_schedule = "15 * * * *"
+  time_zone     = "America/Los_Angeles"
+
   invocation_config {
     service_account                          = google_service_account.dataform_runner.email
     fully_refresh_incremental_tables_enabled = true
