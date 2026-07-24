@@ -1,0 +1,176 @@
+config {
+  type: "table",
+  schema: "propensity_modeling",
+  description: "GOLD: Feature-engineered training data for user retention ML model using rolling 7-day windows",
+  tags: ["propensity_modeling", "gold", "marts"],
+  columns: {
+    user_pseudo_id: "Anonymous user identifier from GA4",
+    observation_date: "End date of the 7-day feature observation window",
+    days_in_window: "Fixed value of 7 (length of observation window)",
+    days_active: "Number of days with activity in the observation window",
+    total_events: "Total events recorded in the observation window",
+    events_per_day: "Average events per day (total_events / 7)",
+    engagement_minutes_per_day: "Average engagement time per day in minutes",
+    levels_started: "Number of game levels started",
+    levels_completed: "Number of game levels completed",
+    levels_failed: "Number of game levels failed",
+    level_completion_rate: "Ratio of levels completed to started (0-1)",
+    max_score: "Highest score achieved in the window",
+    avg_score: "Average score across events",
+    total_engagement_minutes: "Total engaged time in minutes",
+    avg_engagement_seconds_per_event: "Average engagement per event in seconds",
+    events_per_active_day: "Events per day when user was active",
+    days_since_last_activity: "Days between last activity and observation date",
+    device_category: "Primary device type used",
+    operating_system: "Primary operating system used",
+    country: "User's country",
+    will_return: "Target label: 1 if user returned within 7 days after observation, 0 otherwise"
+  }
+}
+
+-- Rolling window approach:
+-- Features: Last 7 days of activity (relative to observation_date)
+-- Label: Did user return in the next 7 days?
+
+WITH date_spine AS (
+  -- Generate observation dates (weekly intervals to manage data volume)
+  -- Using dates where we have enough history and future for labels
+  SELECT observation_date
+  FROM UNNEST(GENERATE_DATE_ARRAY('2018-07-01', '2018-09-15', INTERVAL 7 DAY)) AS observation_date
+),
+
+user_activity_range AS (
+  -- Get each user's activity range to filter valid observations
+  SELECT
+    user_pseudo_id,
+    MIN(event_date) AS first_activity_date,
+    MAX(event_date) AS last_activity_date
+  FROM ${ref("silver_events_flattened")}
+  GROUP BY user_pseudo_id
+),
+
+user_observations AS (
+  -- Create user × observation_date combinations
+  -- Only include observations where user has been active in the window
+  SELECT DISTINCT
+    uar.user_pseudo_id,
+    ds.observation_date
+  FROM user_activity_range uar
+  CROSS JOIN date_spine ds
+  WHERE
+    -- User must have started before observation window
+    uar.first_activity_date <= DATE_SUB(ds.observation_date, INTERVAL 1 DAY)
+    -- And have some activity in the observation window or recently before
+    AND uar.last_activity_date >= DATE_SUB(ds.observation_date, INTERVAL 13 DAY)
+),
+
+user_training_features AS (
+  SELECT
+    uo.user_pseudo_id,
+    uo.observation_date,
+
+    -- Window metadata
+    COUNT(DISTINCT e.event_date) AS days_active,
+    7 AS days_in_window,  -- Fixed 7-day observation window
+    COUNT(*) AS total_events,
+
+    -- Normalized rate features (per day)
+    SAFE_DIVIDE(COUNT(*), 7.0) AS events_per_day,
+    SAFE_DIVIDE(
+      SUM(COALESCE(e.engagement_time_msec, 0)) / 1000.0 / 60.0,
+      7.0
+    ) AS engagement_minutes_per_day,
+
+    -- Gameplay Features
+    COUNTIF(e.event_name = 'level_start') AS levels_started,
+    COUNTIF(e.event_name = 'level_complete') AS levels_completed,
+    COUNTIF(e.event_name = 'level_fail') AS levels_failed,
+    SAFE_DIVIDE(
+      COUNTIF(e.event_name = 'level_complete'),
+      NULLIF(COUNTIF(e.event_name = 'level_start'), 0)
+    ) AS level_completion_rate,
+
+    -- Score Features
+    MAX(e.score) AS max_score,
+    AVG(e.score) AS avg_score,
+
+    -- Time Features (totals for the window)
+    SUM(COALESCE(e.engagement_time_msec, 0)) / 1000.0 / 60.0 AS total_engagement_minutes,
+    AVG(COALESCE(e.engagement_time_msec, 0)) / 1000.0 AS avg_engagement_seconds_per_event,
+
+    -- Event Frequency
+    SAFE_DIVIDE(
+      COUNT(*),
+      NULLIF(COUNT(DISTINCT e.event_date), 0)
+    ) AS events_per_active_day,
+
+    -- Device Features (most recent in window)
+    MAX(e.device_category) AS device_category,
+    MAX(e.operating_system) AS operating_system,
+    MAX(e.country) AS country,
+
+    -- Recency (days since last activity within observation window)
+    DATE_DIFF(uo.observation_date, MAX(e.event_date), DAY) AS days_since_last_activity
+
+  FROM user_observations uo
+  LEFT JOIN ${ref("silver_events_flattened")} e
+    ON uo.user_pseudo_id = e.user_pseudo_id
+   AND e.event_date BETWEEN DATE_SUB(uo.observation_date, INTERVAL 6 DAY)
+                        AND uo.observation_date
+  GROUP BY uo.user_pseudo_id, uo.observation_date
+  HAVING COUNT(*) > 0  -- Must have at least one event in window
+),
+
+user_labels AS (
+  -- Did user have any activity in the 7 days AFTER observation_date?
+  SELECT
+    uo.user_pseudo_id,
+    uo.observation_date,
+    1 AS returned_flag
+  FROM user_observations uo
+  JOIN ${ref("silver_events_flattened")} e
+    ON uo.user_pseudo_id = e.user_pseudo_id
+   AND e.event_date BETWEEN DATE_ADD(uo.observation_date, INTERVAL 1 DAY)
+                        AND DATE_ADD(uo.observation_date, INTERVAL 7 DAY)
+  GROUP BY uo.user_pseudo_id, uo.observation_date
+)
+
+SELECT
+  f.user_pseudo_id,
+  f.observation_date,
+
+  -- Window metadata
+  f.days_in_window,
+  f.days_active,
+
+  -- Numeric Features
+  f.total_events,
+  f.events_per_day,
+  f.engagement_minutes_per_day,
+  f.levels_started,
+  f.levels_completed,
+  f.levels_failed,
+  COALESCE(f.level_completion_rate, 0) AS level_completion_rate,
+  COALESCE(f.max_score, 0) AS max_score,
+  COALESCE(f.avg_score, 0) AS avg_score,
+  COALESCE(f.total_engagement_minutes, 0) AS total_engagement_minutes,
+  COALESCE(f.avg_engagement_seconds_per_event, 0) AS avg_engagement_seconds_per_event,
+  COALESCE(f.events_per_active_day, 0) AS events_per_active_day,
+  COALESCE(f.days_since_last_activity, 0) AS days_since_last_activity,
+
+  -- Categorical Features
+  COALESCE(f.device_category, 'unknown') AS device_category,
+  COALESCE(f.operating_system, 'unknown') AS operating_system,
+  COALESCE(f.country, 'unknown') AS country,
+
+  -- Target Label
+  COALESCE(l.returned_flag, 0) AS will_return
+
+FROM user_training_features f
+LEFT JOIN user_labels l
+  ON f.user_pseudo_id = l.user_pseudo_id
+ AND f.observation_date = l.observation_date
+
+-- Filter for users with minimum activity
+WHERE f.days_active >= 1
+  AND f.total_events >= 3

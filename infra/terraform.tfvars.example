@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+# GitHub personal access token with `repo` scope. Used by the managed Dataform
+# repository to pull this code from GitHub. REQUIRED.
+github_token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# --- Optional overrides (defaults shown) ---
+
+# project_id       = "datacloud-churn"
+# region           = "us-central1"
+# dataset_location = "US"
+# dataset_id       = "propensity_modeling"
+# git_repo_url     = "https://github.com/gCloud-Tech-Showcase/datacloud-churn-prediction.git"
