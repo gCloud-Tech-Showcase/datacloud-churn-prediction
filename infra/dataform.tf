@@ -81,10 +81,18 @@ resource "google_project_iam_member" "runner_vertex_ai_user" {
   member  = "serviceAccount:${google_service_account.dataform_runner.email}"
 }
 
-# Let the Dataform service agent impersonate the runner SA (satisfies strict act-as).
-resource "google_service_account_iam_member" "dataform_actas_runner" {
+# Let the Dataform service agent impersonate the runner SA.
+# - serviceAccountUser (actAs): required at config time to name the SA on the
+#   workflow_config under strict act-as checks.
+# - serviceAccountTokenCreator (getAccessToken): required at run time so Dataform
+#   can mint tokens for the runner and execute the workflow as it.
+resource "google_service_account_iam_member" "dataform_impersonate_runner" {
+  for_each = toset([
+    "roles/iam.serviceAccountUser",
+    "roles/iam.serviceAccountTokenCreator",
+  ])
   service_account_id = google_service_account.dataform_runner.name
-  role               = "roles/iam.serviceAccountUser"
+  role               = each.value
   member             = "serviceAccount:${google_project_service_identity.dataform.email}"
 }
 
@@ -153,5 +161,5 @@ resource "google_dataform_repository_workflow_config" "main" {
     transitive_dependents_included           = false
   }
 
-  depends_on = [google_service_account_iam_member.dataform_actas_runner]
+  depends_on = [google_service_account_iam_member.dataform_impersonate_runner]
 }
