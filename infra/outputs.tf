@@ -19,15 +19,15 @@ output "serving_dataset_id" {
 
 output "dataform_repository_name" {
   description = "The Dataform repository name"
-  value       = google_dataform_repository.main.name
+  value       = local.dataform_repository_name
 }
 
 output "dataform_release_config_name" {
-  description = "The Dataform release configuration name"
-  value       = google_dataform_repository_release_config.main.name
+  description = "The Dataform release configuration name (null unless enable_scheduled_runs)"
+  value       = one(google_dataform_repository_release_config.main[*].name)
 }
 
 output "dataform_workflow_config_name" {
-  description = "The Dataform workflow configuration name"
-  value       = google_dataform_repository_workflow_config.main.name
+  description = "The Dataform workflow configuration name (null unless enable_scheduled_runs)"
+  value       = one(google_dataform_repository_workflow_config.main[*].name)
 }

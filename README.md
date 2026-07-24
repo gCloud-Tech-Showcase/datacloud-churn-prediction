@@ -39,39 +39,41 @@ Details: [`docs/architecture.md`](docs/architecture.md).
    ```
 2. **[OpenTofu](https://opentofu.org) ≥ 1.6** (`tofu`). Terraform ≥ 1.6 also works — the
    config is standard HCL.
-3. **A GitHub personal access token** with `repo` scope. The managed Dataform
-   repository pulls this code from GitHub, so the token is stored in Secret Manager
-   and the repo must be pushed to GitHub **before** you apply (see below).
+
+That's it — **no GitHub token.** The managed Dataform repository pulls this code
+over an *anonymous* git link, which works because the repo is **public**. The
+only requirement is that the code lives on GitHub `main` before you apply (true
+already if you cloned it).
 
 ## Quickstart
 
 ```bash
-# 1. Push this code to GitHub FIRST — the managed Dataform repo pulls from it.
-#    (Skip if you cloned it and it already lives at the git_repo_url default.)
-git remote -v   # confirm origin points at your GitHub repo on `main`
-
-# 2. Provision.
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # set github_token (+ any overrides)
 tofu init
-tofu apply
+tofu apply       # zero required variables — every one has a default
 ```
 
+No `terraform.tfvars` is needed. To point the demo at your own project or fork,
+override `project_id` / `git_repo_url` (see `terraform.tfvars.example`).
+
 `tofu apply` enables the required APIs, creates the two BigQuery datasets
-(`processed`, `serving`), grants the Dataform service agent its IAM,
-and stands up the git-linked Dataform repository with an hourly release + workflow
-schedule. As its **final step it triggers the pipeline once and blocks until it
-finishes** (~2–4 min), so a fresh apply leaves the demo fully built — model
-trained, tables materialized — instead of waiting for the first hourly cron.
+(`processed`, `serving`), grants the Dataform service agent its IAM, and stands
+up the git-linked Dataform repository. As its **final step it triggers the
+pipeline once and blocks until it finishes** (~2–4 min), so a fresh apply leaves
+the demo fully built — model trained, tables materialized.
 
 > Needs `curl` + `python3` on the machine running apply (both come with `gcloud`).
-> Set `run_pipeline_on_apply = false` to skip the auto-run and rely on the hourly
-> workflow cron (or a manual trigger from the Dataform console) instead.
+> Set `run_pipeline_on_apply = false` to skip the auto-run.
+
+> **Scheduled runs are off by default.** A clone-and-apply is a one-shot build.
+> Set `enable_scheduled_runs = true` to also create the hourly release + workflow
+> configs that recompile and retrain `main` on a cron (a self-refreshing deployment).
 
 > **Ordering matters (git-linked Dataform):** the Dataform repository compiles from
 > `git_repo_url`, so the GitHub repo must exist and hold this code on `main` before
 > `tofu apply`. If you renamed the repo or forked it elsewhere, set `git_repo_url`
-> in `terraform.tfvars`.
+> in `terraform.tfvars`. A **private** fork can't use the anonymous link — you'd add
+> a token back (`google_dataform_repository` + Secret Manager).
 
 ## Verify
 
@@ -92,11 +94,11 @@ in [`docs/quick.md`](docs/quick.md).
 |----------|-------|
 | BigQuery dataset `processed` | Cleansed/flattened GA4 events (view over the public Firebase dataset) |
 | BigQuery dataset `serving` | Churn features, BQML model, evaluation & risk scores |
-| Dataform repository + release/workflow | Git-linked, hourly compile + run of `main` |
+| Dataform repository | Git-linked to `main` over an anonymous (tokenless) link; created via the Dataform REST API |
+| Dataform release + workflow configs | Only with `enable_scheduled_runs = true`; hourly compile + run of `main` |
 | Dataform runner service account | `dataform-runner`; workflow invocations execute as it |
-| Secret Manager `dataform-github-token` | Holds the GitHub PAT for Dataform |
 | First-run trigger | `run_pipeline_on_apply` (default on) runs the pipeline at end of apply |
-| Enabled APIs | bigquery, aiplatform, dataform, secretmanager, iam, iamcredentials |
+| Enabled APIs | bigquery, aiplatform, dataform, iam, iamcredentials |
 
 ## Cleanup
 

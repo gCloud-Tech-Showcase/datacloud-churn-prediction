@@ -1,9 +1,24 @@
 # =============================================================================
 # DATAFORM
-# Managed, git-linked repository + release/workflow schedule + IAM.
-# The repository pulls compiled SQL from git_repo_url, so the GitHub repo must
+# Managed, git-linked repository + optional release/workflow schedule + IAM.
+# The repository pulls compiled SQL from git_repo_url ANONYMOUSLY — no PAT /
+# Secret Manager — which works because the GitHub repo is PUBLIC. The repo must
 # already contain this code on `main` before `tofu apply`.
+#
+# The repository itself is created via the Dataform REST API (a terraform_data
+# provisioner), not the google_dataform_repository resource: the provider
+# enforces ExactlyOneOf(token / ssh / developer-connect) on git_remote_settings
+# and so cannot express a tokenless (anonymous) git link, even though the REST
+# API accepts one. Everything else (release/workflow configs, IAM) stays
+# declarative and references the repository by name.
+# (A private fork would need auth added back: recreate this as a
+# google_dataform_repository with an authentication_token_secret_version
+# pointing at a Secret Manager secret.)
 # =============================================================================
+
+locals {
+  dataform_repository_name = "datacloud-churn-prediction"
+}
 
 # -----------------------------------------------------------------------------
 # Dataform Service Identity
@@ -15,33 +30,6 @@ resource "google_project_service_identity" "dataform" {
   service  = "dataform.googleapis.com"
 
   depends_on = [google_project_service.apis["dataform.googleapis.com"]]
-}
-
-# -----------------------------------------------------------------------------
-# Secret Manager (GitHub token for Dataform)
-# -----------------------------------------------------------------------------
-
-resource "google_secret_manager_secret" "github_token" {
-  secret_id = "dataform-github-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.apis["secretmanager.googleapis.com"]]
-}
-
-resource "google_secret_manager_secret_version" "github_token" {
-  secret      = google_secret_manager_secret.github_token.id
-  secret_data = var.github_token
-}
-
-resource "google_secret_manager_secret_iam_member" "dataform_access" {
-  secret_id = google_secret_manager_secret.github_token.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_project_service_identity.dataform.email}"
-
-  depends_on = [google_project_service_identity.dataform]
 }
 
 # -----------------------------------------------------------------------------
@@ -97,37 +85,67 @@ resource "google_service_account_iam_member" "dataform_impersonate_runner" {
 }
 
 # -----------------------------------------------------------------------------
-# Dataform Repository
+# Dataform Repository (created via REST — anonymous public git link)
+# create : idempotent GET-then-POST with a tokenless git_remote_settings.
+# destroy: DELETE ?force=true so `tofu destroy` cleans it up.
+# All values the destroy provisioner needs live in `input` (destroy-time
+# provisioners may only reference `self`), and any change recreates the repo.
 # -----------------------------------------------------------------------------
 
-resource "google_dataform_repository" "main" {
-  provider = google-beta
-  name     = "datacloud-churn-prediction"
-  region   = var.region
+resource "terraform_data" "repository" {
+  triggers_replace = {
+    name   = local.dataform_repository_name
+    region = var.region
+    url    = var.git_repo_url
+  }
 
-  git_remote_settings {
-    url                                 = var.git_repo_url
-    default_branch                      = "main"
-    authentication_token_secret_version = google_secret_manager_secret_version.github_token.id
+  input = {
+    project = var.project_id
+    region  = var.region
+    name    = local.dataform_repository_name
+    url     = var.git_repo_url
+    script  = "${path.module}/scripts/manage_repository.sh"
   }
 
   depends_on = [
+    google_project_service_identity.dataform,
     google_project_service.apis["dataform.googleapis.com"],
-    google_secret_manager_secret_iam_member.dataform_access
   ]
+
+  provisioner "local-exec" {
+    command = "bash ${self.input.script} create"
+    environment = {
+      PROJECT = self.input.project
+      REGION  = self.input.region
+      REPO    = self.input.name
+      URL     = self.input.url
+    }
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "bash ${self.input.script} delete"
+    environment = {
+      PROJECT = self.input.project
+      REGION  = self.input.region
+      REPO    = self.input.name
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
-# Dataform Release Configuration
+# Dataform Release Configuration (optional — enable_scheduled_runs)
 # Compiles `main` hourly. default_database overrides workflow_settings.yaml's
 # defaultProject server-side, so forkers get their own project without editing YAML.
 # -----------------------------------------------------------------------------
 
 resource "google_dataform_repository_release_config" "main" {
+  count = var.enable_scheduled_runs ? 1 : 0
+
   provider   = google-beta
   project    = var.project_id
   region     = var.region
-  repository = google_dataform_repository.main.name
+  repository = local.dataform_repository_name
 
   name          = "production"
   git_commitish = "main"
@@ -139,18 +157,22 @@ resource "google_dataform_repository_release_config" "main" {
     default_database = var.project_id
     default_location = var.dataset_location
   }
+
+  depends_on = [terraform_data.repository]
 }
 
 # -----------------------------------------------------------------------------
-# Dataform Workflow Configuration
+# Dataform Workflow Configuration (optional — enable_scheduled_runs)
 # -----------------------------------------------------------------------------
 
 resource "google_dataform_repository_workflow_config" "main" {
+  count = var.enable_scheduled_runs ? 1 : 0
+
   provider       = google-beta
   project        = var.project_id
   region         = var.region
-  repository     = google_dataform_repository.main.name
-  release_config = google_dataform_repository_release_config.main.id
+  repository     = local.dataform_repository_name
+  release_config = google_dataform_repository_release_config.main[0].id
 
   name = "full-workflow"
 
@@ -182,11 +204,16 @@ resource "google_dataform_repository_workflow_config" "main" {
 resource "terraform_data" "run_pipeline" {
   count = var.run_pipeline_on_apply ? 1 : 0
 
-  # Must exist before we can invoke: the workflow config (naming the runner SA)
-  # and the impersonation grants the runner needs at run time.
+  # The auto-run creates its own compilation result + workflow invocation via
+  # REST, so it's independent of the (optional) scheduled configs. It needs the
+  # repository to compile from, the runner's BigQuery/Vertex grants, and the
+  # service agent's impersonation rights over the runner.
   depends_on = [
-    google_dataform_repository_workflow_config.main,
+    terraform_data.repository,
     google_service_account_iam_member.dataform_impersonate_runner,
+    google_project_iam_member.runner_bq_job_user,
+    google_project_iam_member.runner_bq_data_editor,
+    google_project_iam_member.runner_vertex_ai_user,
   ]
 
   provisioner "local-exec" {
@@ -194,7 +221,7 @@ resource "terraform_data" "run_pipeline" {
     environment = {
       PROJECT   = var.project_id
       REGION    = var.region
-      REPO      = google_dataform_repository.main.name
+      REPO      = local.dataform_repository_name
       RUNNER_SA = google_service_account.dataform_runner.email
     }
   }

@@ -8,12 +8,6 @@ variable "project_id" {
   default     = "datacloud-churn"
 }
 
-variable "github_token" {
-  description = "GitHub personal access token (repo scope) for the git-linked Dataform repository"
-  type        = string
-  sensitive   = true
-}
-
 # =============================================================================
 # OPTIONAL VARIABLES
 # =============================================================================
@@ -37,7 +31,13 @@ variable "git_repo_url" {
 }
 
 variable "run_pipeline_on_apply" {
-  description = "Trigger a Dataform run (compile main + workflow invocation as the runner SA) as the final step of apply and block until it finishes, so a fresh apply leaves the demo fully built. Runs once on first apply; set false to skip and rely on the hourly workflow cron / a manual trigger."
+  description = "Trigger a Dataform run (compile main + workflow invocation as the runner SA) as the final step of apply and block until it finishes, so a fresh apply leaves the demo fully built. Runs once on first apply; set false to skip."
   type        = bool
   default     = true
+}
+
+variable "enable_scheduled_runs" {
+  description = "Create the Dataform release + workflow configs that compile and run the pipeline hourly. Off by default so a clone-and-apply is a one-shot build (tables via run_pipeline_on_apply) with no recurring BQML retrain; set true for a self-refreshing deployment."
+  type        = bool
+  default     = false
 }
