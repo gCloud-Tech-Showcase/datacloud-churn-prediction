@@ -45,35 +45,47 @@ resource "google_secret_manager_secret_iam_member" "dataform_access" {
 }
 
 # -----------------------------------------------------------------------------
-# Dataform IAM
+# Dataform execution service account
+# Workflow invocations run AS this SA. Newly created projects enforce "strict
+# act-as" IAM checks, which require the workflow_config to name an explicit
+# execution SA (the Dataform service agent alone is not accepted). This SA holds
+# the BigQuery + Vertex permissions the pipeline needs; the Dataform service
+# agent is granted actAs on it so Dataform can impersonate it at run time.
 # -----------------------------------------------------------------------------
 
-resource "google_project_iam_member" "dataform_bq_job_user" {
-  project = var.project_id
-  role    = "roles/bigquery.jobUser"
-  member  = "serviceAccount:${google_project_service_identity.dataform.email}"
+resource "google_service_account" "dataform_runner" {
+  account_id   = "dataform-runner"
+  display_name = "Dataform workflow execution"
 
-  depends_on = [google_project_service_identity.dataform]
+  depends_on = [google_project_service.apis["iam.googleapis.com"]]
 }
 
-# Note: dataViewer is not needed — dataEditor (below) is a superset that includes read access.
+resource "google_project_iam_member" "runner_bq_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.dataform_runner.email}"
+}
 
-resource "google_project_iam_member" "dataform_bq_data_editor" {
+# dataViewer is not needed — dataEditor is a superset that includes read access.
+resource "google_project_iam_member" "runner_bq_data_editor" {
   project = var.project_id
   role    = "roles/bigquery.dataEditor"
-  member  = "serviceAccount:${google_project_service_identity.dataform.email}"
-
-  depends_on = [google_project_service_identity.dataform]
+  member  = "serviceAccount:${google_service_account.dataform_runner.email}"
 }
 
 # Required so BQML CREATE MODEL can register the model in the Vertex AI Model Registry
 # (model_registry='vertex_ai'). Registration fails after training without this.
-resource "google_project_iam_member" "dataform_vertex_ai_user" {
+resource "google_project_iam_member" "runner_vertex_ai_user" {
   project = var.project_id
   role    = "roles/aiplatform.user"
-  member  = "serviceAccount:${google_project_service_identity.dataform.email}"
+  member  = "serviceAccount:${google_service_account.dataform_runner.email}"
+}
 
-  depends_on = [google_project_service_identity.dataform]
+# Let the Dataform service agent impersonate the runner SA (satisfies strict act-as).
+resource "google_service_account_iam_member" "dataform_actas_runner" {
+  service_account_id = google_service_account.dataform_runner.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_project_service_identity.dataform.email}"
 }
 
 # -----------------------------------------------------------------------------
@@ -135,8 +147,11 @@ resource "google_dataform_repository_workflow_config" "main" {
   name = "full-workflow"
 
   invocation_config {
+    service_account                          = google_service_account.dataform_runner.email
     fully_refresh_incremental_tables_enabled = true
     transitive_dependencies_included         = true
     transitive_dependents_included           = false
   }
+
+  depends_on = [google_service_account_iam_member.dataform_actas_runner]
 }

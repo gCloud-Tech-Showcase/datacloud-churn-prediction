@@ -5,18 +5,14 @@
 
 resource "google_project_service" "apis" {
   for_each = toset([
-    "bigquery.googleapis.com",     # BQML training + queries
-    "aiplatform.googleapis.com",   # Vertex AI Model Registry (BQML model_registry='vertex_ai')
-    "dataform.googleapis.com",     # managed git-linked Dataform repository
-    "secretmanager.googleapis.com" # stores the GitHub token for Dataform
+    "bigquery.googleapis.com",      # BQML training + queries
+    "aiplatform.googleapis.com",    # Vertex AI Model Registry (BQML model_registry='vertex_ai')
+    "dataform.googleapis.com",      # managed git-linked Dataform repository
+    "secretmanager.googleapis.com", # stores the GitHub token for Dataform
+    "iam.googleapis.com",           # execution service account
+    "iamcredentials.googleapis.com" # service-account impersonation (Dataform act-as runner)
   ])
 
   service            = each.value
   disable_on_destroy = false
 }
-
-# -----------------------------------------------------------------------------
-# Project metadata (used by other resources)
-# -----------------------------------------------------------------------------
-
-data "google_project" "current" {}
