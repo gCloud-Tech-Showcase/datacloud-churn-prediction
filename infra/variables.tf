@@ -35,3 +35,9 @@ variable "git_repo_url" {
   type        = string
   default     = "https://github.com/gCloud-Tech-Showcase/datacloud-churn-prediction.git"
 }
+
+variable "run_pipeline_on_apply" {
+  description = "Trigger a Dataform run (compile main + workflow invocation as the runner SA) as the final step of apply and block until it finishes, so a fresh apply leaves the demo fully built. Runs once on first apply; set false to skip and rely on the hourly workflow cron / a manual trigger."
+  type        = bool
+  default     = true
+}

@@ -10,3 +10,8 @@ github_token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 # region           = "us-central1"
 # dataset_location = "US"
 # git_repo_url     = "https://github.com/gCloud-Tech-Showcase/datacloud-churn-prediction.git"
+
+# Run the Dataform pipeline as the final step of apply (blocks until it finishes,
+# ~2-4 min). Needs curl + python3 (bundled with gcloud). Set false to rely on the
+# hourly workflow cron / a manual trigger instead.
+# run_pipeline_on_apply = true

@@ -169,3 +169,33 @@ resource "google_dataform_repository_workflow_config" "main" {
 
   depends_on = [google_service_account_iam_member.dataform_impersonate_runner]
 }
+
+# -----------------------------------------------------------------------------
+# First-run trigger (optional)
+# There is no declarative Terraform resource for a Dataform workflow invocation,
+# so kick the first run off imperatively at the end of apply and block until it
+# finishes — a fresh apply then leaves the demo fully built instead of waiting
+# up to an hour for the workflow cron. Runs once (on create); subsequent applies
+# are no-ops. Disable with run_pipeline_on_apply = false.
+# -----------------------------------------------------------------------------
+
+resource "terraform_data" "run_pipeline" {
+  count = var.run_pipeline_on_apply ? 1 : 0
+
+  # Must exist before we can invoke: the workflow config (naming the runner SA)
+  # and the impersonation grants the runner needs at run time.
+  depends_on = [
+    google_dataform_repository_workflow_config.main,
+    google_service_account_iam_member.dataform_impersonate_runner,
+  ]
+
+  provisioner "local-exec" {
+    command = "bash ${path.module}/scripts/run_pipeline.sh"
+    environment = {
+      PROJECT   = var.project_id
+      REGION    = var.region
+      REPO      = google_dataform_repository.main.name
+      RUNNER_SA = google_service_account.dataform_runner.email
+    }
+  }
+}

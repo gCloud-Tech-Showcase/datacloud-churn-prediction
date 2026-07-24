@@ -60,8 +60,13 @@ tofu apply
 `tofu apply` enables the required APIs, creates the two BigQuery datasets
 (`processed`, `serving`), grants the Dataform service agent its IAM,
 and stands up the git-linked Dataform repository with an hourly release + workflow
-schedule. The first release compiles `main` and runs the pipeline; you can also
-trigger the `full-workflow` run immediately from the Dataform console.
+schedule. As its **final step it triggers the pipeline once and blocks until it
+finishes** (~2–4 min), so a fresh apply leaves the demo fully built — model
+trained, tables materialized — instead of waiting for the first hourly cron.
+
+> Needs `curl` + `python3` on the machine running apply (both come with `gcloud`).
+> Set `run_pipeline_on_apply = false` to skip the auto-run and rely on the hourly
+> workflow cron (or a manual trigger from the Dataform console) instead.
 
 > **Ordering matters (git-linked Dataform):** the Dataform repository compiles from
 > `git_repo_url`, so the GitHub repo must exist and hold this code on `main` before
@@ -87,9 +92,11 @@ in [`docs/quick.md`](docs/quick.md).
 |----------|-------|
 | BigQuery dataset `processed` | Cleansed/flattened GA4 events (view over the public Firebase dataset) |
 | BigQuery dataset `serving` | Churn features, BQML model, evaluation & risk scores |
-| Dataform repository + release/workflow | Git-linked, hourly compile of `main` |
+| Dataform repository + release/workflow | Git-linked, hourly compile + run of `main` |
+| Dataform runner service account | `dataform-runner`; workflow invocations execute as it |
 | Secret Manager `dataform-github-token` | Holds the GitHub PAT for Dataform |
-| Enabled APIs | bigquery, aiplatform, dataform, secretmanager |
+| First-run trigger | `run_pipeline_on_apply` (default on) runs the pipeline at end of apply |
+| Enabled APIs | bigquery, aiplatform, dataform, secretmanager, iam, iamcredentials |
 
 ## Cleanup
 
