@@ -19,11 +19,11 @@ for copy-paste verification queries.
 
 ```
 Firebase GA4 (public)          BigQuery + Dataform                    Vertex AI
-  events_*  ──►  silver_events_flattened ──► gold_training_features ──► gold_user_retention_model ──► Model Registry
+  events_*  ──►  events_flattened ──► training_features ──► user_retention_model ──► Model Registry
                                                                               │
                                                     ┌─────────────────────────┼─────────────────────────┐
                                                     ▼                         ▼                         ▼
-                                        gold_model_evaluation   ..._feature_importance     gold_user_risk_scores
+                                        model_evaluation   ..._feature_importance     user_risk_scores
 ```
 
 Details: [`docs/architecture.md`](docs/architecture.md).
@@ -58,7 +58,7 @@ tofu apply
 ```
 
 `tofu apply` enables the required APIs, creates the two BigQuery datasets
-(`propensity_modeling`, `ga4_source`), grants the Dataform service agent its IAM,
+(`processed`, `serving`), grants the Dataform service agent its IAM,
 and stands up the git-linked Dataform repository with an hourly release + workflow
 schedule. The first release compiles `main` and runs the pipeline; you can also
 trigger the `full-workflow` run immediately from the Dataform console.
@@ -74,7 +74,7 @@ After the pipeline runs, from the BigQuery console (or
 `bq --project_id=datacloud-churn query`):
 
 ```sql
-SELECT * FROM ML.EVALUATE(MODEL `propensity_modeling.gold_user_retention_model`);
+SELECT * FROM ML.EVALUATE(MODEL `serving.user_retention_model`);
 ```
 
 Expect **ROC AUC ≈ 0.79** (0.74–0.84 is normal — the split is randomized), accuracy
@@ -85,8 +85,8 @@ in [`docs/quick.md`](docs/quick.md).
 
 | Resource | Notes |
 |----------|-------|
-| BigQuery dataset `propensity_modeling` | SILVER/GOLD churn tables + BQML model |
-| BigQuery dataset `ga4_source` | Views over the public Firebase GA4 dataset |
+| BigQuery dataset `processed` | Cleansed/flattened GA4 events (view over the public Firebase dataset) |
+| BigQuery dataset `serving` | Churn features, BQML model, evaluation & risk scores |
 | Dataform repository + release/workflow | Git-linked, hourly compile of `main` |
 | Secret Manager `dataform-github-token` | Holds the GitHub PAT for Dataform |
 | Enabled APIs | bigquery, aiplatform, dataform, secretmanager |

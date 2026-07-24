@@ -7,14 +7,14 @@ output "project_id" {
   value       = var.project_id
 }
 
-output "propensity_modeling_dataset_id" {
-  description = "The propensity modeling BigQuery dataset ID"
-  value       = google_bigquery_dataset.propensity_modeling.dataset_id
+output "processed_dataset_id" {
+  description = "The processed-stage BigQuery dataset ID (flattened GA4 events)"
+  value       = google_bigquery_dataset.stages["processed"].dataset_id
 }
 
-output "ga4_source_dataset_id" {
-  description = "The GA4 source BigQuery dataset ID"
-  value       = google_bigquery_dataset.ga4_source.dataset_id
+output "serving_dataset_id" {
+  description = "The serving-stage BigQuery dataset ID (features, model, predictions)"
+  value       = google_bigquery_dataset.stages["serving"].dataset_id
 }
 
 output "dataform_repository_name" {

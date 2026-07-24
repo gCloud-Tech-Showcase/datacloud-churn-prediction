@@ -30,12 +30,6 @@ variable "dataset_location" {
   default     = "US"
 }
 
-variable "dataset_id" {
-  description = "BigQuery dataset ID for the propensity modeling use case"
-  type        = string
-  default     = "propensity_modeling"
-}
-
 variable "git_repo_url" {
   description = "GitHub repository URL the managed Dataform repo pulls from"
   type        = string

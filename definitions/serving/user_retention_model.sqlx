@@ -1,9 +1,9 @@
 config {
   type: "operations",
-  schema: "propensity_modeling",
+  schema: "serving",
   hasOutput: true,
-  description: "GOLD: BigQuery ML logistic regression model for user retention prediction, registered in Vertex AI",
-  tags: ["propensity_modeling", "gold", "ml"]
+  description: "SERVING: BigQuery ML logistic regression model for user retention prediction, registered in Vertex AI",
+  tags: ["propensity_modeling", "serving", "ml"]
 }
 
 CREATE OR REPLACE MODEL ${self()}
@@ -100,4 +100,4 @@ SELECT
 
   -- Target
   will_return
-FROM ${ref("gold_training_features")}
+FROM ${ref("training_features")}

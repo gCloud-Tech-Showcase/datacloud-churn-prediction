@@ -8,10 +8,10 @@ Train and evaluate a churn prediction model using BigQuery ML.
 
 ## Step 1: Model Definition
 
-The model in `gold_user_retention_model.sqlx`:
+The model in `user_retention_model.sqlx`:
 
 ```sql
-CREATE OR REPLACE MODEL `propensity_modeling.gold_user_retention_model`
+CREATE OR REPLACE MODEL `serving.user_retention_model`
 TRANSFORM(
   ML.STANDARD_SCALER(days_active) OVER() AS scaled_days_active,
   ML.STANDARD_SCALER(total_events) OVER() AS scaled_total_events,
@@ -23,7 +23,7 @@ OPTIONS(
   model_registry = 'vertex_ai',
   enable_global_explain = TRUE
 )
-AS SELECT * FROM `propensity_modeling.gold_training_features`;
+AS SELECT * FROM `serving.training_features`;
 ```
 
 The TRANSFORM clause applies preprocessing as part of the model. Predictions automatically apply these transforms.
@@ -33,7 +33,7 @@ The TRANSFORM clause applies preprocessing as part of the model. Predictions aut
 ## Step 2: Evaluation Metrics
 
 ```sql
-SELECT * FROM ML.EVALUATE(MODEL `propensity_modeling.gold_user_retention_model`);
+SELECT * FROM ML.EVALUATE(MODEL `serving.user_retention_model`);
 ```
 
 | Metric | Value | Meaning |
@@ -51,7 +51,7 @@ AUC of 0.79 means the model is production-ready — achieved with zero Python.
 
 ```sql
 SELECT *
-FROM ML.GLOBAL_EXPLAIN(MODEL `propensity_modeling.gold_user_retention_model`)
+FROM ML.GLOBAL_EXPLAIN(MODEL `serving.user_retention_model`)
 ORDER BY attribution DESC
 LIMIT 5;
 ```
@@ -68,7 +68,7 @@ Users who play frequently and complete levels are more likely to return.
 ## Step 4: Confusion Matrix
 
 ```sql
-SELECT * FROM ML.CONFUSION_MATRIX(MODEL `propensity_modeling.gold_user_retention_model`);
+SELECT * FROM ML.CONFUSION_MATRIX(MODEL `serving.user_retention_model`);
 ```
 
 | | Predicted Churn | Predicted Return |
@@ -84,7 +84,7 @@ False Positives = wasted retention spend. False Negatives = missed opportunities
 
 ```sql
 SELECT threshold, ROUND(precision, 3) AS precision, ROUND(recall, 3) AS recall
-FROM ML.ROC_CURVE(MODEL `propensity_modeling.gold_user_retention_model`)
+FROM ML.ROC_CURVE(MODEL `serving.user_retention_model`)
 WHERE threshold IN (0.3, 0.5, 0.7);
 ```
 
@@ -100,7 +100,7 @@ WHERE threshold IN (0.3, 0.5, 0.7);
 
 ```sql
 SELECT ROUND(SUM(CASE WHEN will_return = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS baseline
-FROM `propensity_modeling.gold_training_features`;
+FROM `serving.training_features`;
 ```
 
 - Baseline (always predict return): 60.2%

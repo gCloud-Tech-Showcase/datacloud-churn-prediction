@@ -1,9 +1,9 @@
 config {
   type: "table",
-  schema: "propensity_modeling",
-  description: "GOLD: Materialized churn risk scores from ML.PREDICT, enabling analyst exploration in Data Canvas without running ML functions",
-  tags: ["propensity_modeling", "gold", "ml"],
-  dependencies: ["gold_user_retention_model"],
+  schema: "serving",
+  description: "SERVING: Materialized churn risk scores from ML.PREDICT, enabling analyst exploration in Data Canvas without running ML functions",
+  tags: ["propensity_modeling", "serving", "ml"],
+  dependencies: ["user_retention_model"],
   columns: {
     user_pseudo_id: "Unique anonymous identifier for the user from GA4",
     observation_date: "Date when features were calculated (end of 7-day observation window)",
@@ -50,6 +50,6 @@ SELECT
   will_return AS actual_outcome
 
 FROM ML.PREDICT(
-  MODEL ${ref("gold_user_retention_model")},
-  (SELECT * FROM ${ref("gold_training_features")})
+  MODEL ${ref("user_retention_model")},
+  (SELECT * FROM ${ref("training_features")})
 )

@@ -1,8 +1,8 @@
 config {
   type: "table",
-  schema: "propensity_modeling",
-  description: "GOLD: Feature-engineered training data for user retention ML model using rolling 7-day windows",
-  tags: ["propensity_modeling", "gold", "marts"],
+  schema: "serving",
+  description: "SERVING: Feature-engineered training data for user retention ML model using rolling 7-day windows",
+  tags: ["propensity_modeling", "serving", "marts"],
   columns: {
     user_pseudo_id: "Anonymous user identifier from GA4",
     observation_date: "End date of the 7-day feature observation window",
@@ -45,7 +45,7 @@ user_activity_range AS (
     user_pseudo_id,
     MIN(event_date) AS first_activity_date,
     MAX(event_date) AS last_activity_date
-  FROM ${ref("silver_events_flattened")}
+  FROM ${ref("events_flattened")}
   GROUP BY user_pseudo_id
 ),
 
@@ -113,7 +113,7 @@ user_training_features AS (
     DATE_DIFF(uo.observation_date, MAX(e.event_date), DAY) AS days_since_last_activity
 
   FROM user_observations uo
-  LEFT JOIN ${ref("silver_events_flattened")} e
+  LEFT JOIN ${ref("events_flattened")} e
     ON uo.user_pseudo_id = e.user_pseudo_id
    AND e.event_date BETWEEN DATE_SUB(uo.observation_date, INTERVAL 6 DAY)
                         AND uo.observation_date
@@ -128,7 +128,7 @@ user_labels AS (
     uo.observation_date,
     1 AS returned_flag
   FROM user_observations uo
-  JOIN ${ref("silver_events_flattened")} e
+  JOIN ${ref("events_flattened")} e
     ON uo.user_pseudo_id = e.user_pseudo_id
    AND e.event_date BETWEEN DATE_ADD(uo.observation_date, INTERVAL 1 DAY)
                         AND DATE_ADD(uo.observation_date, INTERVAL 7 DAY)

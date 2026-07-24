@@ -38,7 +38,7 @@ SELECT
   total_events,
   level_completion_rate,
   will_return
-FROM `propensity_modeling.gold_training_features`
+FROM `serving.training_features`
 LIMIT 10;
 ```
 
@@ -59,7 +59,7 @@ SELECT
   will_return,
   COUNT(*) AS count,
   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS percentage
-FROM `propensity_modeling.gold_training_features`
+FROM `serving.training_features`
 GROUP BY will_return;
 ```
 
@@ -76,7 +76,7 @@ will_return | count | percentage
 ## 4. Evaluate Model
 
 ```sql
-SELECT * FROM ML.EVALUATE(MODEL `propensity_modeling.gold_user_retention_model`);
+SELECT * FROM ML.EVALUATE(MODEL `serving.user_retention_model`);
 ```
 
 **Output:**
@@ -92,7 +92,7 @@ precision | recall | accuracy | f1_score | roc_auc
 
 ```sql
 SELECT *
-FROM ML.GLOBAL_EXPLAIN(MODEL `propensity_modeling.gold_user_retention_model`)
+FROM ML.GLOBAL_EXPLAIN(MODEL `serving.user_retention_model`)
 ORDER BY attribution DESC
 LIMIT 5;
 ```
@@ -122,8 +122,8 @@ SELECT
     ELSE 'LOW RISK'
   END AS risk_category
 FROM ML.PREDICT(
-  MODEL `propensity_modeling.gold_user_retention_model`,
-  (SELECT * FROM `propensity_modeling.gold_training_features` LIMIT 100)
+  MODEL `serving.user_retention_model`,
+  (SELECT * FROM `serving.training_features` LIMIT 100)
 )
 ORDER BY return_probability ASC
 LIMIT 10;
@@ -145,8 +145,8 @@ user_pseudo_id     | return_probability | risk_category
 ```sql
 WITH predictions AS (
   SELECT (SELECT prob FROM UNNEST(predicted_will_return_probs) WHERE label = 1) AS return_probability
-  FROM ML.PREDICT(MODEL `propensity_modeling.gold_user_retention_model`,
-    (SELECT * FROM `propensity_modeling.gold_training_features`))
+  FROM ML.PREDICT(MODEL `serving.user_retention_model`,
+    (SELECT * FROM `serving.training_features`))
 )
 SELECT
   CASE

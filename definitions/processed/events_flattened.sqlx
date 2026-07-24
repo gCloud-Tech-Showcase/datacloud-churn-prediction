@@ -1,8 +1,8 @@
 config {
   type: "view",
-  schema: "ga4_source",
-  description: "SILVER: Flattened and cleansed GA4 events with unnested parameters",
-  tags: ["propensity_modeling", "silver", "staging"],
+  schema: "processed",
+  description: "PROCESSED: Flattened and cleansed GA4 events with unnested parameters",
+  tags: ["propensity_modeling", "processed", "staging"],
   columns: {
     event_date: "Date of the event (parsed from YYYYMMDD string)",
     event_name: "Type of event (e.g., level_start, level_complete, screen_view)",

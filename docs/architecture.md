@@ -8,20 +8,20 @@ Data flow and pipeline structure for user retention modeling with BigQuery ML.
 
 ```mermaid
 graph TB
-    subgraph "Bronze Layer - Raw Data"
+    subgraph "Raw Source - external, live"
         GA4[Firebase GA4<br/>Public Dataset]
     end
 
     subgraph "BigQuery + Dataform"
-        subgraph "Silver Layer - Cleansed"
-            FLAT[silver_events_flattened<br/>Unnested GA4]
+        subgraph "processed dataset"
+            FLAT[events_flattened<br/>Unnested GA4]
         end
 
-        subgraph "Gold Layer - ML Ready"
-            FEAT[gold_training_features<br/>7-day Windows]
-            MODEL[gold_user_retention_model<br/>BQML Logistic Reg]
-            FI[gold_user_retention_model_feature_importance<br/>ML.GLOBAL_EXPLAIN]
-            SCORES[gold_user_risk_scores<br/>ML.PREDICT]
+        subgraph "serving dataset"
+            FEAT[training_features<br/>7-day Windows]
+            MODEL[user_retention_model<br/>BQML Logistic Reg]
+            FI[user_retention_model_feature_importance<br/>ML.GLOBAL_EXPLAIN]
+            SCORES[user_risk_scores<br/>ML.PREDICT]
         end
     end
 
@@ -36,14 +36,14 @@ graph TB
     MODEL --> FI
     MODEL --> SCORES
 
-    classDef bronze fill:#cd7f32,stroke:#333,color:#fff
-    classDef silver fill:#c0c0c0,stroke:#333,color:#000
-    classDef gold fill:#ffd700,stroke:#333,color:#000
+    classDef raw fill:#cd7f32,stroke:#333,color:#fff
+    classDef processed fill:#c0c0c0,stroke:#333,color:#000
+    classDef serving fill:#ffd700,stroke:#333,color:#000
     classDef external fill:#4285f4,stroke:#333,color:#fff
 
-    class GA4 bronze
-    class FLAT silver
-    class FEAT,MODEL,FI,SCORES gold
+    class GA4 raw
+    class FLAT processed
+    class FEAT,MODEL,FI,SCORES serving
     class REGISTRY external
 ```
 
@@ -54,18 +54,18 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant GA4 as Firebase GA4<br/>Public Dataset
-    participant Silver as silver_events_flattened
-    participant Gold as gold_training_features
-    participant BQML as gold_user_retention_model
+    participant Processed as processed.events_flattened
+    participant Serving as serving.training_features
+    participant BQML as user_retention_model
     participant VA as Vertex AI
 
-    GA4->>Silver: Unnest event_params<br/>Parse dates, flatten structure
-    Note over Silver: View with UNNEST,<br/>type conversions
+    GA4->>Processed: Unnest event_params<br/>Parse dates, flatten structure
+    Note over Processed: View with UNNEST,<br/>type conversions
 
-    Silver->>Gold: Rolling 7-day windows<br/>Feature engineering
-    Note over Gold: CTE-based:<br/>date_spine x users
+    Processed->>Serving: Rolling 7-day windows<br/>Feature engineering
+    Note over Serving: CTE-based:<br/>date_spine x users
 
-    Gold->>BQML: CREATE MODEL<br/>TRANSFORM + LOGISTIC_REG
+    Serving->>BQML: CREATE MODEL<br/>TRANSFORM + LOGISTIC_REG
     Note over BQML: Auto-scaling,<br/>categorical encoding
 
     BQML->>VA: Register to Model Registry<br/>model_registry='vertex_ai'
@@ -76,14 +76,14 @@ sequenceDiagram
 
 ## Key Components
 
-| Layer | Table | Purpose |
+| Stage | Table | Purpose |
 |-------|-------|---------|
-| Bronze | `events_*` | Raw GA4 events (external declaration) |
-| Silver | `silver_events_flattened` | Unnested event parameters |
-| Gold | `gold_training_features` | Rolling 7-day window features |
-| Gold | `gold_user_retention_model` | Trained logistic regression |
-| Gold | `gold_user_retention_model_feature_importance` | Feature weights via ML.GLOBAL_EXPLAIN |
-| Gold | `gold_user_risk_scores` | Materialized predictions |
+| Raw (external) | `events_*` | Raw GA4 events (external declaration, live public dataset) |
+| processed | `events_flattened` | Unnested event parameters |
+| serving | `training_features` | Rolling 7-day window features |
+| serving | `user_retention_model` | Trained logistic regression |
+| serving | `user_retention_model_feature_importance` | Feature weights via ML.GLOBAL_EXPLAIN |
+| serving | `user_risk_scores` | Materialized predictions |
 
 ---
 

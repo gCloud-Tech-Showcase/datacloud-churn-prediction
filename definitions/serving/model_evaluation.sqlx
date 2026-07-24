@@ -1,9 +1,9 @@
 config {
   type: "table",
-  schema: "propensity_modeling",
-  description: "GOLD: Model evaluation metrics for user retention model. Runs after model training to capture performance.",
-  tags: ["propensity_modeling", "gold", "ml"],
-  dependencies: ["gold_user_retention_model"],
+  schema: "serving",
+  description: "SERVING: Model evaluation metrics for user retention model. Runs after model training to capture performance.",
+  tags: ["propensity_modeling", "serving", "ml"],
+  dependencies: ["user_retention_model"],
   columns: {
     model_name: "Name of the evaluated model",
     evaluation_timestamp: "When the evaluation was performed",
@@ -25,7 +25,7 @@ config {
 
 WITH evaluation_metrics AS (
   SELECT
-    'gold_user_retention_model' AS model_name,
+    'user_retention_model' AS model_name,
     CURRENT_TIMESTAMP() AS evaluation_timestamp,
     precision,
     recall,
@@ -33,7 +33,7 @@ WITH evaluation_metrics AS (
     f1_score,
     log_loss,
     roc_auc
-  FROM ML.EVALUATE(MODEL ${ref("gold_user_retention_model")})
+  FROM ML.EVALUATE(MODEL ${ref("user_retention_model")})
 ),
 
 training_info AS (
@@ -41,13 +41,13 @@ training_info AS (
     MAX(iteration) AS total_iterations,
     MIN(loss) AS final_loss,
     MAX(duration_ms) AS training_duration_ms
-  FROM ML.TRAINING_INFO(MODEL ${ref("gold_user_retention_model")})
+  FROM ML.TRAINING_INFO(MODEL ${ref("user_retention_model")})
 ),
 
 feature_importance AS (
   SELECT
     STRING_AGG(feature || ':' || CAST(ROUND(attribution, 3) AS STRING), ', ' ORDER BY attribution DESC LIMIT 5) AS top_5_features
-  FROM ML.GLOBAL_EXPLAIN(MODEL ${ref("gold_user_retention_model")})
+  FROM ML.GLOBAL_EXPLAIN(MODEL ${ref("user_retention_model")})
 )
 
 SELECT

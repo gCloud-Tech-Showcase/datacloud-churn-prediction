@@ -19,7 +19,7 @@ WHERE _TABLE_SUFFIX BETWEEN '20180612' AND '20180620'
 LIMIT 10;
 ```
 
-GA4 stores dates as YYYYMMDD strings. The `silver_events_flattened` view parses these and unnests the nested `event_params` array.
+GA4 stores dates as YYYYMMDD strings. The `events_flattened` view parses these and unnests the nested `event_params` array.
 
 ---
 
@@ -34,7 +34,7 @@ SELECT
   total_events,
   level_completion_rate,
   will_return
-FROM `propensity_modeling.gold_training_features`
+FROM `serving.training_features`
 ORDER BY observation_date
 LIMIT 10;
 ```
@@ -74,7 +74,7 @@ SELECT
   will_return,
   COUNT(*) AS count,
   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS percentage
-FROM `propensity_modeling.gold_training_features`
+FROM `serving.training_features`
 GROUP BY will_return;
 ```
 
@@ -89,7 +89,7 @@ SELECT
   ROUND(AVG(days_active), 2) AS avg_days_active,
   ROUND(AVG(level_completion_rate), 3) AS avg_completion_rate,
   COUNT(DISTINCT user_pseudo_id) AS unique_users
-FROM `propensity_modeling.gold_training_features`;
+FROM `serving.training_features`;
 ```
 
 Wide range in completion rates (0.0 to 1.0) suggests this will be a strong predictor.
@@ -98,7 +98,7 @@ Wide range in completion rates (0.0 to 1.0) suggests this will be a strong predi
 
 ## How It Works
 
-The feature engineering in `gold_training_features.sqlx`:
+The feature engineering in `training_features.sqlx`:
 
 1. **Date Spine** - Generate observation dates every 7 days
 2. **Feature Calculation** - Aggregate events from 7 days BEFORE observation_date

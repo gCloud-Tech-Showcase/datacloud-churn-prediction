@@ -14,8 +14,8 @@ SELECT
   predicted_will_return,
   ROUND((SELECT prob FROM UNNEST(predicted_will_return_probs) WHERE label = 1), 3) AS return_probability
 FROM ML.PREDICT(
-  MODEL `propensity_modeling.gold_user_retention_model`,
-  (SELECT * FROM `propensity_modeling.gold_training_features` LIMIT 100)
+  MODEL `serving.user_retention_model`,
+  (SELECT * FROM `serving.training_features` LIMIT 100)
 )
 ORDER BY return_probability ASC
 LIMIT 10;
@@ -37,8 +37,8 @@ SELECT
     ELSE 'LOW RISK'
   END AS risk_category
 FROM ML.PREDICT(
-  MODEL `propensity_modeling.gold_user_retention_model`,
-  (SELECT * FROM `propensity_modeling.gold_training_features`)
+  MODEL `serving.user_retention_model`,
+  (SELECT * FROM `serving.training_features`)
 )
 ORDER BY return_probability ASC;
 ```
@@ -56,8 +56,8 @@ ORDER BY return_probability ASC;
 ```sql
 WITH predictions AS (
   SELECT (SELECT prob FROM UNNEST(predicted_will_return_probs) WHERE label = 1) AS return_probability
-  FROM ML.PREDICT(MODEL `propensity_modeling.gold_user_retention_model`,
-    (SELECT * FROM `propensity_modeling.gold_training_features`))
+  FROM ML.PREDICT(MODEL `serving.user_retention_model`,
+    (SELECT * FROM `serving.training_features`))
 )
 SELECT
   CASE
@@ -85,9 +85,9 @@ SELECT
   f.total_events,
   ROUND(f.level_completion_rate, 2) AS completion_rate,
   f.days_since_last_activity
-FROM ML.PREDICT(MODEL `propensity_modeling.gold_user_retention_model`,
-  (SELECT * FROM `propensity_modeling.gold_training_features`)) p
-JOIN `propensity_modeling.gold_training_features` f
+FROM ML.PREDICT(MODEL `serving.user_retention_model`,
+  (SELECT * FROM `serving.training_features`)) p
+JOIN `serving.training_features` f
   ON p.user_pseudo_id = f.user_pseudo_id AND p.observation_date = f.observation_date
 WHERE (SELECT prob FROM UNNEST(p.predicted_will_return_probs) WHERE label = 1) < 0.3
 ORDER BY return_probability ASC
