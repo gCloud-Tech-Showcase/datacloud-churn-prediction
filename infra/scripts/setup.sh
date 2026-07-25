@@ -79,12 +79,20 @@ echo ""
 # The provider drives google_project_service through Cloud Resource Manager, so
 # CRM itself can't be enabled by Terraform on a fresh project. gcloud no-ops if
 # they're already on.
+#
+# dataform is here for a subtler reason: terraform_data.repository and
+# run_pipeline call the Dataform REST API from local-exec provisioners. If
+# Terraform enables that API in the same apply, the call races enablement and
+# fails with PERMISSION_DENIED on dataform.repositories.create — Terraform's
+# own ordering can't help, because the REST call happens outside its graph.
+# Rule of thumb: any API a provisioner touches must be pre-enabled here.
 # -----------------------------------------------------------------------------
 echo "==> Enabling bootstrap APIs"
 gcloud services enable \
   cloudresourcemanager.googleapis.com \
   serviceusage.googleapis.com \
   storage.googleapis.com \
+  dataform.googleapis.com \
   --project="$PROJECT_ID"
 
 # Enablement is eventually consistent — a fresh project can still 403 for a
