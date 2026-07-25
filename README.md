@@ -48,13 +48,23 @@ already if you cloned it).
 ## Quickstart
 
 ```bash
-cd infra
-tofu init
-tofu apply       # zero required variables — every one has a default
+./infra/scripts/setup.sh   # one-time per project: APIs + state bucket + tofu init
+cd infra && tofu apply     # zero required variables — every one has a default
 ```
 
-No `terraform.tfvars` is needed. To point the demo at your own project or fork,
-override `project_id` / `git_repo_url` (see `terraform.tfvars.example`).
+`setup.sh` prepares everything Terraform can't bootstrap itself: it enables the
+Cloud Resource Manager / Service Usage APIs (the provider needs them before it can
+manage any service), creates a **versioned** state bucket `gs://<project>-tfstate`,
+and runs `tofu init` pointed at it. Re-running is a safe no-op.
+
+To deploy somewhere else, change `project_id`'s default in `infra/variables.tf` —
+that single value drives the provider, the resources, and the state bucket name — or
+pass `./infra/scripts/setup.sh --project=<id>`. No `terraform.tfvars` needed.
+
+> **State lives remotely** in `gs://<project>-tfstate/tf/infra/`, versioned so a bad
+> apply is recoverable. Each fork gets its own bucket in its own project, so there's
+> nothing shared to collide with. Already have local state? `setup.sh --migrate`
+> moves it up without touching any live resource.
 
 `tofu apply` enables the required APIs, creates the two BigQuery datasets
 (`processed`, `serving`), grants the Dataform service agent its IAM, and stands
@@ -106,6 +116,15 @@ in [`docs/quick.md`](docs/quick.md).
 cd infra && tofu destroy
 ```
 
-This removes the demo resources. The **project itself is left intact** (Tofu didn't
-create it) — delete it separately with `gcloud projects delete datacloud-churn` if you
-want it gone.
+This removes the demo resources, including the BigQuery datasets and their contents
+(`delete_contents_on_destroy` — everything is reproducible on the next run).
+
+Two things Tofu deliberately does **not** delete, because it didn't create them:
+the **project** and the **state bucket** (`gs://datacloud-churn-tfstate`). Destroying
+the bucket that holds the state mid-destroy would be self-defeating. Remove them
+manually if you want the project gone:
+
+```bash
+gcloud storage rm -r gs://datacloud-churn-tfstate
+gcloud projects delete datacloud-churn
+```
