@@ -3,14 +3,19 @@
 # One dataset per medallion stage (semantic names), so each stage can be shared
 # independently as a Data Product later. No `raw` stage: the source is the
 # external public GA4 dataset, referenced live via the ga4_events declaration.
-#   processed  = cleansed/flattened events  (was: silver)
-#   serving    = features, model, predictions, eval  (was: gold)
+#   processed   = cleansed/flattened events  (was: silver)
+#   serving     = features, model, predictions, eval  (was: gold)
+#   assertions  = data-quality artifacts (hard-fail assertions + warning views)
 # =============================================================================
 
 resource "google_bigquery_dataset" "stages" {
   for_each = {
     processed = "PROCESSED: cleansed & flattened GA4 events"
     serving   = "SERVING: churn features, BQML model, evaluation & risk scores"
+    # Not a medallion stage — the shared namespace Dataform materializes both
+    # hard-fail assertions and warning-level monitoring views into
+    # (workflow_settings.yaml: defaultAssertionDataset).
+    assertions = "QUALITY: data-quality assertions and monitoring views"
   }
 
   dataset_id  = each.key

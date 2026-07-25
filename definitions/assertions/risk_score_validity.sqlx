@@ -1,0 +1,50 @@
+config {
+  type: "assertion",
+  description: "QUALITY: predictions must be valid probabilities and consistently banded",
+  tags: ["propensity_modeling", "assertions", "quality"]
+}
+
+-- return_probability comes from ML.PREDICT, so it is a probability by
+-- construction — anything outside [0,1] means the column being read isn't the
+-- one we think it is (a schema change in ML.PREDICT's output, or the wrong
+-- field plucked from the predicted_will_return_probs struct).
+--
+-- risk_category is derived from return_probability by a CASE in
+-- user_risk_scores.sqlx. Re-deriving and comparing catches those thresholds
+-- drifting away from what the column description and docs promise
+-- (HIGH <0.3, MEDIUM <0.6, LOW otherwise) — drift that is otherwise invisible,
+-- since every value still looks like a valid tier.
+--
+-- Boundary carve-out: the stored column is ROUND(prob, 4) but the CASE reads
+-- the UNROUNDED probability. A value like 0.29996 stores as 0.3000 and bands
+-- HIGH correctly, yet re-deriving from the stored column would call it MEDIUM.
+-- Rows within half a rounding step of a threshold are therefore excluded —
+-- they are ambiguous by construction, not defective.
+
+SELECT
+  user_pseudo_id,
+  observation_date,
+  return_probability,
+  risk_category,
+  'probability_out_of_range' AS violation
+FROM ${ref("user_risk_scores")}
+WHERE return_probability IS NULL
+   OR return_probability NOT BETWEEN 0 AND 1
+
+UNION ALL
+
+SELECT
+  user_pseudo_id,
+  observation_date,
+  return_probability,
+  risk_category,
+  'band_mismatch' AS violation
+FROM ${ref("user_risk_scores")}
+WHERE return_probability BETWEEN 0 AND 1
+  AND ABS(return_probability - 0.3) > 0.0001
+  AND ABS(return_probability - 0.6) > 0.0001
+  AND risk_category != CASE
+        WHEN return_probability < 0.3 THEN 'HIGH'
+        WHEN return_probability < 0.6 THEN 'MEDIUM'
+        ELSE 'LOW'
+      END

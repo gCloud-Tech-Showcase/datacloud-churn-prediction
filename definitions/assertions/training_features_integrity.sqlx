@@ -1,0 +1,47 @@
+config {
+  type: "assertion",
+  description: "QUALITY: training rows must have a complete key and a binary label",
+  tags: ["propensity_modeling", "assertions", "quality"]
+}
+
+-- These are the two ways training data can silently corrupt a model rather
+-- than fail loudly:
+--   A duplicate (user_pseudo_id, observation_date) weights that user's
+--   behaviour twice in the fit, skewing the coefficients with no error.
+--   A will_return outside {0,1} is not a label BQML can learn from — logistic
+--   regression expects a binary target, and anything else quietly degrades it.
+-- A null key means the feature-engineering join dropped its grain.
+--
+-- CAST(NULL AS ...) is required in the UNION branches: a bare NULL is typed
+-- INT64 and clashes with the STRING/DATE columns above it.
+
+SELECT
+  user_pseudo_id,
+  observation_date,
+  COUNT(*) AS row_count,
+  'duplicate_key' AS violation
+FROM ${ref("training_features")}
+GROUP BY user_pseudo_id, observation_date
+HAVING COUNT(*) > 1
+
+UNION ALL
+
+SELECT
+  user_pseudo_id,
+  observation_date,
+  1 AS row_count,
+  'null_key' AS violation
+FROM ${ref("training_features")}
+WHERE user_pseudo_id IS NULL
+   OR observation_date IS NULL
+
+UNION ALL
+
+SELECT
+  user_pseudo_id,
+  observation_date,
+  1 AS row_count,
+  'label_not_binary' AS violation
+FROM ${ref("training_features")}
+WHERE will_return IS NULL
+   OR will_return NOT IN (0, 1)

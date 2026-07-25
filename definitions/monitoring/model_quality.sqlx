@@ -1,0 +1,36 @@
+config {
+  type: "view",
+  schema: "assertions",
+  description: "QUALITY: model metrics that fell below their expected floor — a signal to investigate, never a build failure",
+  tags: ["propensity_modeling", "monitoring", "quality"],
+  columns: {
+    metric: "Which metric dropped below its floor",
+    value: "Observed value on the most recent training run",
+    floor: "Value below which the model is worth investigating",
+    evaluation_timestamp: "When this evaluation ran"
+  }
+}
+
+-- Warning-level ON PURPOSE. Model quality is a distribution, not a defect:
+-- BQML retrains on whatever GA4 data the window covers, so metrics move run to
+-- run. Hard-failing the workflow on a metric dip would make the pipeline red
+-- for a reason nobody can fix by correcting data.
+--
+-- The floors are set below the observed baseline (ROC AUC ~0.75, accuracy
+-- ~0.72), so they fire on genuine degradation rather than normal variance.
+-- A row here means the model got materially worse — investigate the input
+-- window before trusting the risk scores.
+
+WITH latest AS (
+  SELECT *
+  FROM ${ref("model_evaluation")}
+  QUALIFY ROW_NUMBER() OVER (ORDER BY evaluation_timestamp DESC) = 1
+)
+
+SELECT 'roc_auc' AS metric, roc_auc AS value, 0.70 AS floor, evaluation_timestamp
+FROM latest WHERE roc_auc < 0.70
+
+UNION ALL
+
+SELECT 'accuracy', accuracy, 0.65, evaluation_timestamp
+FROM latest WHERE accuracy < 0.65
