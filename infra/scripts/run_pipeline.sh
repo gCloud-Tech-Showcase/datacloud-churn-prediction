@@ -83,8 +83,24 @@ run_once() {
         query="$(curl -sS "$API_ROOT/$winame:query" -H "Authorization: Bearer $tok")"
         echo "  pipeline $state — details:"
         printf '%s\n' "$query"
-        # A token/permission failure here is the propagation race — retry.
-        if printf '%s' "$query" | grep -qiE 'permission|generate tokens|PERMISSION_DENIED|token creator'; then
+        # Retry only the IAM-propagation race. Match against the extracted
+        # failureReason fields ONLY — grepping the whole payload matches
+        # Dataform's own generated SQL, which embeds the literal string
+        # "User does not have bigquery.datasets.create permission" in its
+        # CREATE SCHEMA wrapper, making every failure look retryable forever.
+        reasons="$(printf '%s' "$query" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for a in d.get("workflowInvocationActions", []):
+    r = a.get("failureReason")
+    if r:
+        print(r)
+' 2>/dev/null)"
+        printf '  failure reasons:\n%s\n' "${reasons:-  (none reported)}"
+        if printf '%s' "$reasons" | grep -qiE 'permission|generate tokens|PERMISSION_DENIED|token creator'; then
           return 1
         fi
         return 2
